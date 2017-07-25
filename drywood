@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import datetime
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
@@ -42,6 +43,23 @@ def parse_data(content):
         y_data = np.append(y_data, [float(element[1])])
     return x_data, y_data
 
+def parse_data_datetime(content):
+    x_data = np.array([])
+    y_data = np.array([])
+    row=content.pop(0)
+    element=row.split()
+    y_data = np.append(y_data, [float(element[1])])
+    x_data = np.append(x_data, [0.])
+    start_time=parse_datetime(element[0])
+    for row in content:
+        element = row.split() 
+        y_data = np.append(y_data, [float(element[1])])
+        delta = parse_datetime(element[0])-start_time 
+        minutes=time_delta_min_sec(delta)[0]
+        x_data = np.append(x_data, [minutes])
+    return x_data, y_data
+
+
 def select_fit_points(x_data,y_data,fit_range):
     if fit_range==None: return x_data, y_data
     print "selecting fit points with range: ", fit_range
@@ -56,24 +74,37 @@ def select_fit_points(x_data,y_data,fit_range):
             y_selected = np.append(y_selected, [y_data[i]])
     return x_selected, y_selected
             
-       
+def parse_datetime(timestr):
+    ts=[int(i) for i in timestr.split("-")]
+    return datetime.datetime(*ts) 
+    
+def time_delta_min_sec(delta):
+    return divmod(delta.days*86400+delta.seconds, 60)
+
 parser = argparse.ArgumentParser(description='Wood evaporated mass estimation')
  
 parser.add_argument('-r', '--fit-range', type=str, help='fit range in hours given as min:max')
 parser.add_argument('-m', '--model', type=int, help='mathematical model')
 parser.add_argument('filename', type=str)
+parser.add_argument('-d', action='store_true', default=False)
 
 args = parser.parse_args()
 filename = args.filename
 model_num = args.model
 fit_range = args.fit_range
+use_datetime = args.d
 
 print "model:", model_num
 
 with open(filename) as f:
     content = f.readlines()
 
-x_data, y_data = parse_data(content)
+print "use_datetime:", use_datetime
+if use_datetime:
+    x_data, y_data = parse_data_datetime(content)
+else:
+    x_data, y_data = parse_data(content)
+
 x_data = x_data/60.
 m0=y_data[0]
 mlast=y_data[-1]
@@ -130,5 +161,6 @@ x = np.linspace(min(x_data), max(x_data)+2*24., 1000)
 plt.plot(x_data, y_data, 'rx', label='data')
 plt.plot(x, model(x, *parameter), 'b-', label='fit')  
 plt.show()
+
 
 
