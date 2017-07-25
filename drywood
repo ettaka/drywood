@@ -5,7 +5,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import normal
-from scipy.optimize import curve_fit
+import scipy.optimize
 import argparse
 
 def make_model_function(*args):
@@ -33,6 +33,20 @@ def make_model_function(*args):
             return (m0-mi)*np.exp(-k*t)+mi
 
     return f
+
+def final_model_function(f, *args):
+    def f_out(t):
+        return f(t, *args)
+    return f_out
+
+def root_function(f, target):
+    def f_out(t):
+        return f(t)-target
+    return f_out
+ 
+def solve_drying_time(f, mtarget, tlast):
+    model_root_f = root_function(f, mtarget)
+    return scipy.optimize.root(model_root_f, [1.], method='hybr')
 
 def parse_data(content):
     x_data = np.array([])
@@ -87,12 +101,15 @@ parser.add_argument('-r', '--fit-range', type=str, help='fit range in hours give
 parser.add_argument('-m', '--model', type=int, help='mathematical model')
 parser.add_argument('filename', type=str)
 parser.add_argument('-d', action='store_true', default=False)
+parser.add_argument('-t', '--target', type=float, help='evaporation mass residual target (%)')
 
 args = parser.parse_args()
 filename = args.filename
 model_num = args.model
 fit_range = args.fit_range
 use_datetime = args.d
+evap_target_p = args.target
+if evap_target_p==None: evap_target_p=1.
 
 print "model:", model_num
 
@@ -117,49 +134,49 @@ if model_num==2: initial = [200.,0.02]
 if model_num==3: initial = [71.4, -24.2, m0, -0.00543, 0.00543]
 if model_num==4: initial = [71.4, -24.2, -0.00543, 0.00543]
 
-parameter, covariance_matrix = curve_fit(model, x_selected, y_selected,initial)
+parameter, covariance_matrix = scipy.optimize.curve_fit(model, x_selected, y_selected,initial)
 
 if model_num==1:
     m0 = parameter[0]
     mi = parameter[1]
     k  = parameter[2]
-    print "m0\tmi\tk\tmlast"
-    print m0,"\t",mi,"\t",k,"\t",mlast
 if model_num==2:
     mi = parameter[0]
     k  = parameter[1]
-    print "m0\tmi\tk\tmlast"
-    print m0,"\t",mi,"\t",k,"\t",mlast 
 if model_num==3:
     m0 = parameter[2]
     C1 = parameter[0]
     C2 = parameter[1]
     mi = m0-C1-C2
-    print "m0\tmi\tmlast"
-    print m0,"\t",mi,"\t",mlast 
 if model_num==4:
     C1 = parameter[0]
     C2 = parameter[1]
     mi = m0-C1-C2
-    print "m0\tmi\tmlast"
-    print m0,"\t",mi,"\t",mlast 
+
+print "m0\tmi\tmlast"
+print np.round(m0, 1),"\t",np.round(mi, 1),"\t",np.round(mlast, 1)
 
 evap_final_p = np.round((m0-mi)/mi*100., 1)
 evap_final = np.round(m0-mi)
 evap_last_p = np.round((mlast-mi)/mi*100., 1)
 evap_last = np.round(mlast-mi)
-
+tlast = x_data[-1]
 msg = "Total evaporated mass at final state: "
 msg += str(evap_final) + "g (" + str(evap_final_p) + "%)\n"
 sys.stdout.write(msg)
-msg = "Evaporation mass left: "
+msg = "Evaporation mass residual: "
 msg += str(evap_last) + "g (" + str(evap_last_p) + "%)\n"
 sys.stdout.write(msg)
 
+final_model = final_model_function(model, *parameter)
+mtarget = mi*(1.+evap_target_p/100.)
+drying_time = solve_drying_time(final_model, mtarget, tlast) 
+print "mtarget:", np.round(mtarget, 1)
+print "time left:", np.round(drying_time['x'][0]-tlast, 1)
 
 x = np.linspace(min(x_data), max(x_data)+2*24., 1000)
 plt.plot(x_data, y_data, 'rx', label='data')
-plt.plot(x, model(x, *parameter), 'b-', label='fit')  
+plt.plot(x, final_model(x), 'b-', label='fit')  
 plt.show()
 
 
